@@ -23,11 +23,11 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' })); // Allow larger JSON for Base64 if needed
 app.use('/uploads', express.static(uploadDir));
 
 app.get('/', (req, res) => {
-  res.json({ message: 'Campus Nexus API is running', version: '1.0.0' });
+  res.json({ message: 'Campus Nexus API is running', version: '1.1.0' });
 });
 
 // --- Image Upload ---
@@ -63,7 +63,7 @@ app.post('/api/auth/register', (req, res) => {
         if (err.message.includes('UNIQUE')) return res.status(400).json({ error: 'Email already exists' });
         return res.status(500).json({ error: 'Registration failed' });
       }
-      const newUser = { id: this.lastID, name, email, dept, year, verified: 0, role: 'student' };
+      const newUser = { id: this.lastID, name, email, dept, year, verified: 0, role: 'student', merit_score: 50, skills: '' };
       const token = jwt.sign({ id: newUser.id, email: newUser.email }, JWT_SECRET);
       res.status(201).json({ token, user: newUser });
     }
@@ -91,33 +91,24 @@ app.get('/api/profile', authenticateToken, (req, res) => {
   });
 });
 
-app.put('/api/profile', authenticateToken, (req, res) => {
-  const { name, dept, year } = req.body;
-  db.run(
-    'UPDATE users SET name = ?, dept = ?, year = ? WHERE id = ?',
-    [name, dept, year, req.user.id],
-    function (err) {
-      if (err) return res.status(500).json({ error: 'Update failed' });
-      res.json({ message: 'Profile updated' });
-    }
-  );
-});
-
 // --- Listings (Marketplace) ---
 app.get('/api/listings', (req, res) => {
-  db.all('SELECT listings.*, users.name as seller_name FROM listings JOIN users ON listings.user_id = users.id WHERE status = "active"', [], (err, rows) => {
+  db.all('SELECT listings.*, users.name as seller_name FROM listings JOIN users ON listings.user_id = users.id WHERE listings.status = "active" ORDER BY listings.id DESC', [], (err, rows) => {
     if (err) return res.status(500).json({ error: 'Fetch failed' });
     res.json(rows);
   });
 });
 
 app.post('/api/listings', authenticateToken, (req, res) => {
-  const { title, category, condition, price, is_donation, photo_url } = req.body;
+  const { title, description, category, condition, price, is_donation, photo_url, carbon_saved } = req.body;
   db.run(
-    'INSERT INTO listings (user_id, title, category, condition, price, is_donation, photo_url) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    [req.user.id, title, category, condition, price, is_donation, photo_url],
+    'INSERT INTO listings (user_id, title, description, category, condition, price, is_donation, photo_url, carbon_saved) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [req.user.id, title, description, category, condition, price, is_donation, photo_url, carbon_saved || 0],
     function (err) {
-      if (err) return res.status(500).json({ error: 'Creation failed' });
+      if (err) {
+        console.error(err);
+        return res.status(500).json({ error: 'Creation failed' });
+      }
       res.status(201).json({ id: this.lastID });
     }
   );
@@ -125,11 +116,10 @@ app.post('/api/listings', authenticateToken, (req, res) => {
 
 // --- Lost & Found ---
 app.get('/api/lost-found', (req, res) => {
-  // Combine lost and found for the feed
   const query = `
-    SELECT id, user_id, description, tags, photo_url, location_text, status, 'lost' as type FROM lost_items
+    SELECT id, user_id, title, description, tags, photo_url, location_text, status, created_at, 'lost' as type FROM lost_items
     UNION ALL
-    SELECT id, user_id, description, tags, photo_url, location_text, status, 'found' as type FROM found_items
+    SELECT id, user_id, title, description, tags, photo_url, location_text, status, created_at, 'found' as type FROM found_items
     ORDER BY id DESC
   `;
   db.all(query, [], (err, rows) => {
@@ -139,20 +129,23 @@ app.get('/api/lost-found', (req, res) => {
 });
 
 app.post('/api/lost-found', authenticateToken, (req, res) => {
-  const { description, tags, photo_url, location_text, type } = req.body; // type: 'lost' or 'found'
+  const { title, description, tags, photo_url, location_text, type } = req.body; // type: 'lost' or 'found'
   const table = type === 'lost' ? 'lost_items' : 'found_items';
   
   db.run(
-    `INSERT INTO ${table} (user_id, description, tags, photo_url, location_text) VALUES (?, ?, ?, ?, ?)`,
-    [req.user.id, description, tags, photo_url, location_text],
+    `INSERT INTO ${table} (user_id, title, description, tags, photo_url, location_text) VALUES (?, ?, ?, ?, ?, ?)`,
+    [req.user.id, title, description, tags, photo_url, location_text],
     function (err) {
-      if (err) return res.status(500).json({ error: 'Report failed' });
+      if (err) {
+        console.error(err);
+        return res.status(500).json({ error: 'Report failed' });
+      }
       res.status(201).json({ id: this.lastID });
     }
   );
 });
 
-// --- Conversations & Messaging ---
+// --- Conversations ---
 app.get('/api/conversations', authenticateToken, (req, res) => {
   db.all(
     'SELECT conversations.*, users.name as other_user_name FROM conversations JOIN users ON (conversations.user_a = users.id OR conversations.user_b = users.id) WHERE (user_a = ? OR user_b = ?) AND users.id != ?',
@@ -164,66 +157,12 @@ app.get('/api/conversations', authenticateToken, (req, res) => {
   );
 });
 
-app.post('/api/conversations', authenticateToken, (req, res) => {
-  const { other_user_id, listing_id } = req.body;
-  db.run(
-    'INSERT INTO conversations (user_a, user_b, listing_id) VALUES (?, ?, ?)',
-    [req.user.id, other_user_id, listing_id],
-    function (err) {
-      if (err) return res.status(500).json({ error: 'Failed to start conversation' });
-      res.status(201).json({ id: this.lastID });
-    }
-  );
-});
-
-// --- Meetups ---
-app.get('/api/meetups', authenticateToken, (req, res) => {
-  db.all(
-    `SELECT meetups.*, conversations.listing_id FROM meetups 
-     JOIN conversations ON meetups.conversation_id = conversations.id 
-     WHERE conversations.user_a = ? OR conversations.user_b = ?`,
-    [req.user.id, req.user.id],
-    (err, rows) => {
-      if (err) return res.status(500).json({ error: 'Fetch failed' });
-      res.json(rows);
-    }
-  );
-});
-
-app.post('/api/meetups', authenticateToken, (req, res) => {
-  const { conversation_id, location_name, scheduled_at } = req.body;
-  db.run(
-    'INSERT INTO meetups (conversation_id, location_name, scheduled_at) VALUES (?, ?, ?)',
-    [conversation_id, location_name, scheduled_at],
-    function (err) {
-      if (err) return res.status(500).json({ error: 'Meetup scheduled' });
-      res.status(201).json({ id: this.lastID });
-    }
-  );
-});
-
-// --- Bids (Investment) ---
+// --- Bids ---
 app.get('/api/bids', authenticateToken, (req, res) => {
-  db.all(
-    'SELECT * FROM bids WHERE student_id = ? OR bidder_id = ?',
-    [req.user.id, req.user.id],
-    (err, rows) => {
-      if (err) return res.status(500).json({ error: 'Fetch failed' });
-      res.json(rows);
-    }
-  );
-});
-
-app.post('/api/bids', authenticateToken, (req, res) => {
-  const { student_id, amount, equity_percentage } = req.body;
-  db.run(
-    'INSERT INTO bids (student_id, bidder_id, amount, equity_percentage) VALUES (?, ?, ?, ?)',
-    [student_id, req.user.id, amount, equity_percentage],
-    function (err) {
-      if (err) return res.status(500).json({ error: 'Bid failed' });
-      res.status(201).json({ id: this.lastID });
-    }
-  );
+  db.all('SELECT * FROM bids WHERE student_id = ? OR bidder_id = ?', [req.user.id, req.user.id], (err, rows) => {
+    if (err) return res.status(500).json({ error: 'Fetch failed' });
+    res.json(rows);
+  });
 });
 
 app.listen(PORT, () => {

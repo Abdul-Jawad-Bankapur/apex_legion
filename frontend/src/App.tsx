@@ -226,8 +226,36 @@ export default function App() {
           api.getListings(),
           api.getLostFound()
         ]);
-        setItems(fetchedItems);
-        setLostFound(fetchedLF);
+        
+        // Map backend fields to frontend expectations
+        const mappedItems = fetchedItems.map((item: any) => ({
+          id: item.id.toString(),
+          sellerId: item.user_id.toString(),
+          title: item.title,
+          description: item.description || '',
+          price: item.price,
+          category: item.category,
+          condition: item.condition,
+          imageUrl: item.photo_url || 'https://picsum.photos/seed/item/400/300',
+          status: item.status,
+          carbonSaved: item.carbon_saved || 0,
+          createdAt: item.created_at
+        }));
+
+        const mappedLF = fetchedLF.map((lf: any) => ({
+          id: lf.id.toString(),
+          reporterId: lf.user_id.toString(),
+          title: lf.title || (lf.type === 'lost' ? 'Lost Item' : 'Found Item'),
+          description: lf.description,
+          imageUrl: lf.photo_url || 'https://picsum.photos/seed/lost/400/300',
+          tags: lf.tags ? lf.tags.split(',') : [],
+          type: lf.type,
+          status: lf.status,
+          createdAt: lf.created_at
+        }));
+
+        setItems(mappedItems);
+        setLostFound(mappedLF);
       } catch (err) {
         console.error("Initial fetch failed:", err);
       }
@@ -497,23 +525,26 @@ function MarketplaceView({ profile, items, cart, setCart, calculateDiscountedPri
     const file = e.target.files?.[0];
     if (!file) return;
     
-    // Always show preview immediately
+    // Always show local preview immediately for UX
     const reader = new FileReader();
     reader.onloadend = async () => {
       setNewItem(prev => ({ ...prev, imageUrl: reader.result as string }));
       
-      if (!manualEntry) {
-        setIsAnalyzing(true);
-        try {
+      try {
+        // Upload to server
+        const { imageUrl } = await api.uploadImage(file);
+        setNewItem(prev => ({ ...prev, imageUrl })); // Update with server URL
+
+        if (!manualEntry) {
+          setIsAnalyzing(true);
           const base64 = (reader.result as string).split(',')[1];
           const analysis = await analyzeImage(base64);
-          setNewItem(prev => ({ ...prev, ...analysis, imageUrl: reader.result as string }));
-        } catch (err) {
-          console.error("AI Analysis failed, switching to manual", err);
-          setManualEntry(true);
-        } finally {
-          setIsAnalyzing(false);
+          setNewItem(prev => ({ ...prev, ...analysis, imageUrl })); // Keep server URL
         }
+      } catch (err) {
+        console.error("Image processing failed", err);
+      } finally {
+        setIsAnalyzing(false);
       }
     };
     reader.readAsDataURL(file);
@@ -524,17 +555,19 @@ function MarketplaceView({ profile, items, cart, setCart, calculateDiscountedPri
     try {
       const listingData = {
         title: newItem.title,
+        description: newItem.description,
         category: newItem.category,
         condition: newItem.condition,
         price: newItem.price,
         is_donation: newItem.category === 'Donations',
-        photo_url: newItem.imageUrl
+        photo_url: newItem.imageUrl,
+        carbon_saved: Math.floor(Math.random() * 50) + 10
       };
 
       await api.createListing(listingData);
       
-      setIsAdding(false);
-      setNewItem({ title: '', description: '', price: 0, category: 'Books', condition: 'Good', imageUrl: '' });
+      // Full refresh
+      window.location.reload(); 
     } catch (err) {
       console.error("Failed to add item:", err);
       alert("Failed to list item.");
@@ -773,23 +806,26 @@ function LostFoundView({ profile, lostFound }: { profile: UserProfile | null, lo
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Show preview immediately
+    // Show local preview immediately
     const reader = new FileReader();
     reader.onloadend = async () => {
       setNewReport(prev => ({ ...prev, imageUrl: reader.result as string }));
 
-      if (!manualEntry) {
-        setIsAnalyzing(true);
-        try {
+      try {
+        // Upload to server
+        const { imageUrl } = await api.uploadImage(file);
+        setNewReport(prev => ({ ...prev, imageUrl }));
+
+        if (!manualEntry) {
+          setIsAnalyzing(true);
           const base64 = (reader.result as string).split(',')[1];
           const analysis = await analyzeImage(base64);
-          setNewReport(prev => ({ ...prev, ...analysis, imageUrl: reader.result as string }));
-        } catch (err) {
-          console.error("Lost & Found AI Analysis failed", err);
-          setManualEntry(true);
-        } finally {
-          setIsAnalyzing(false);
+          setNewReport(prev => ({ ...prev, ...analysis, imageUrl }));
         }
+      } catch (err) {
+        console.error("Lost & Found image processing failed", err);
+      } finally {
+        setIsAnalyzing(false);
       }
     };
     reader.readAsDataURL(file);
@@ -799,17 +835,18 @@ function LostFoundView({ profile, lostFound }: { profile: UserProfile | null, lo
     if (!profile) return;
     try {
       const reportData = {
+        title: newReport.title,
         description: newReport.description,
         tags: newReport.tags.join(','),
         photo_url: newReport.imageUrl,
-        location_text: 'Campus', // Default for now
+        location_text: 'Campus',
         type: newReport.type
       };
 
       await api.reportLostFound(reportData);
       
-      setIsReporting(false);
-      setNewReport({ title: '', description: '', type: 'lost', imageUrl: '', tags: [] });
+      // Full refresh
+      window.location.reload();
     } catch (err) {
       console.error("Failed to submit report:", err);
       alert("Failed to submit report.");

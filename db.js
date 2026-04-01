@@ -2,7 +2,7 @@ const sqlite3 = require('sqlite3').verbose();
 const db = new sqlite3.Database('./campus_nexus.db');
 
 db.serialize(() => {
-  // users: id, name, email (UNIQUE), dept, year, verified (BOOLEAN), role
+  // users: id, name, email (UNIQUE), password, dept, year, verified (BOOLEAN), role
   db.run(`CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT,
@@ -11,44 +11,53 @@ db.serialize(() => {
     dept TEXT,
     year INTEGER,
     verified BOOLEAN DEFAULT 0,
-    role TEXT DEFAULT 'student'
+    role TEXT DEFAULT 'student',
+    merit_score INTEGER DEFAULT 50,
+    skills TEXT
   )`);
 
-  // listings: id, user_id (FK), title, category, condition, price, is_donation, photo_url, status
+  // listings: id, user_id (FK), title, description, category, condition, price, is_donation, photo_url, status, carbon_saved, created_at
   db.run(`CREATE TABLE IF NOT EXISTS listings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER,
     title TEXT,
+    description TEXT,
     category TEXT,
     condition TEXT,
     price REAL,
     is_donation BOOLEAN,
     photo_url TEXT,
     status TEXT DEFAULT 'active',
+    carbon_saved INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(user_id) REFERENCES users(id)
   )`);
 
-  // lost_items: id, user_id (FK), description, tags (comma-separated string), photo_url, location_text, status
+  // lost_items: id, user_id (FK), title, description, tags (comma-separated), photo_url, location_text, status, created_at
   db.run(`CREATE TABLE IF NOT EXISTS lost_items (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER,
+    title TEXT,
     description TEXT,
     tags TEXT,
     photo_url TEXT,
     location_text TEXT,
     status TEXT DEFAULT 'lost',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(user_id) REFERENCES users(id)
   )`);
 
-  // found_items: id, user_id (FK), description, tags (comma-separated string), photo_url, location_text, status
+  // found_items: id, user_id (FK), title, description, tags (comma-separated), photo_url, location_text, status, created_at
   db.run(`CREATE TABLE IF NOT EXISTS found_items (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER,
+    title TEXT,
     description TEXT,
     tags TEXT,
     photo_url TEXT,
     location_text TEXT,
     status TEXT DEFAULT 'found',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(user_id) REFERENCES users(id)
   )`);
 
@@ -89,9 +98,21 @@ db.serialize(() => {
   )`);
 });
 
-// Hackathon Migration: Ensure password column exists
-db.run("ALTER TABLE users ADD COLUMN password TEXT", (err) => {
-  // Ignore error if column already exists
-});
+// Migration helper for hackathon (adding missing columns to existing tables)
+const addColumn = (table, col, type) => {
+  db.run(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`, (err) => {
+    // Column might already exist, ignore error
+  });
+};
+
+addColumn('users', 'merit_score', 'INTEGER DEFAULT 50');
+addColumn('users', 'skills', 'TEXT');
+addColumn('listings', 'description', 'TEXT');
+addColumn('listings', 'carbon_saved', 'INTEGER DEFAULT 0');
+addColumn('listings', 'created_at', 'DATETIME DEFAULT CURRENT_TIMESTAMP');
+addColumn('lost_items', 'title', 'TEXT');
+addColumn('lost_items', 'created_at', 'DATETIME DEFAULT CURRENT_TIMESTAMP');
+addColumn('found_items', 'title', 'TEXT');
+addColumn('found_items', 'created_at', 'DATETIME DEFAULT CURRENT_TIMESTAMP');
 
 module.exports = db;
