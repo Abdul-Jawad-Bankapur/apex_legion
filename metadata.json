@@ -1,0 +1,5 @@
+{
+  "name": "EcoCampus",
+  "description": "A localized, decentralized platform for academic resource exchange and peer-to-peer educational investment.",
+  "requestFramePermissions": ["camera"]
+}

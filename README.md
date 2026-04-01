@@ -1,53 +1,20 @@
-# Campus Nexus - Verified Student Marketplace
+<div align="center">
+<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+</div>
 
-A verified, student-exclusive peer marketplace and lost-and-found registry built for high-stakes hackathon speed.
+# Run and deploy your AI Studio app
 
-## Tech Stack
-- **Frontend**: React (Vite, Tailwind, Lucide, Motion)
-- **Backend**: Node.js (Express)
-- **Database**: SQLite3
-- **Auth**: Mock JWT Authentication
+This contains everything you need to run your app locally.
 
----
+View your app in AI Studio: https://ai.studio/apps/219ed1ba-594d-42b2-a6b4-4920b37cc47a
 
-## 🚀 Getting Started
+## Run Locally
 
-### 1. Backend Setup
-From the root directory:
-```bash
-# Install dependencies
-npm install
+**Prerequisites:**  Node.js
 
-# Start the server
-npm start
-```
-The backend will run on `http://localhost:3000`. It will automatically create `campus_nexus.db` and an `uploads/` folder on first run.
 
-### 2. Frontend Setup
-From the `frontend` directory:
-```bash
-cd frontend
-
-# Install dependencies
-npm install
-
-# Start the development server
-npm run dev
-```
-The frontend will run on `http://localhost:5173`.
-
----
-
-## 🛠 Features
-- **Mock Auth**: Login with any college email to get a JWT.
-- **Marketplace**: Create and view listings for gear.
-- **Lost & Found**: AI-powered matching (Gemini ready) and reporting.
-- **P2P Investment**: Academic merit-based bidding system.
-- **Messaging**: Conversations and meetup scheduling.
-- **Image Uploads**: Local file storage for item photos.
-
-## 📁 Project Structure
-- `server.js`: Main Express logic and API endpoints.
-- `db.js`: SQLite schema initialization.
-- `uploads/`: Local directory for stored images.
-- `frontend/src/`: React source code.
+1. Install dependencies:
+   `npm install`
+2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+3. Run the app:
+   `npm run dev`
