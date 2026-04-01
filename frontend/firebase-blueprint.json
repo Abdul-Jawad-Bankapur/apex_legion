@@ -1,0 +1,110 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "photoURL": { "type": "string" },
+        "usn": { "type": "string", "description": "University Seat Number" },
+        "meritScore": { "type": "number", "description": "Calculated merit score" },
+        "skills": { "type": "array", "items": { "type": "string" } },
+        "role": { "type": "string", "enum": ["student", "admin", "bidder"] },
+        "isVerified": { "type": "boolean" },
+        "academicData": { "type": "object", "description": "Raw academic data from CSV" }
+      },
+      "required": ["uid", "email", "usn"]
+    },
+    "Item": {
+      "title": "Item",
+      "description": "Marketplace item",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "sellerId": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "price": { "type": "number", "description": "Base price in Rupees" },
+        "category": { "type": "string" },
+        "condition": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "status": { "type": "string", "enum": ["available", "sold"] },
+        "carbonSaved": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["sellerId", "title", "price"]
+    },
+    "LostFound": {
+      "title": "LostFound",
+      "description": "Lost and found items",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "reporterId": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "type": { "type": "string", "enum": ["lost", "found"] },
+        "status": { "type": "string", "enum": ["active", "matched", "resolved"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["reporterId", "title", "type"]
+    },
+    "Bid": {
+      "title": "Bid",
+      "description": "P2P Investment Bid",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studentId": { "type": "string" },
+        "bidderId": { "type": "string" },
+        "amount": { "type": "number" },
+        "equityPercentage": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "accepted", "rejected"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["studentId", "bidderId", "amount"]
+    },
+    "Meetup": {
+      "title": "Meetup",
+      "description": "Scheduled physical handover",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "participants": { "type": "array", "items": { "type": "string" } },
+        "location": { "type": "string" },
+        "time": { "type": "string", "format": "date-time" },
+        "purpose": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "confirmed", "completed", "cancelled"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["participants", "location", "purpose"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/items/{itemId}": {
+      "schema": "Item",
+      "description": "Marketplace items"
+    },
+    "/lostFound/{id}": {
+      "schema": "LostFound",
+      "description": "Lost and found reports"
+    },
+    "/bids/{bidId}": {
+      "schema": "Bid",
+      "description": "Investment bids"
+    },
+    "/meetups/{meetupId}": {
+      "schema": "Meetup",
+      "description": "Scheduled meetups"
+    }
+  }
+}
