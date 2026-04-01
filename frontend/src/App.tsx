@@ -394,7 +394,7 @@ export default function App() {
           {activeTab === 'marketplace' && <MarketplaceView profile={profile} items={items} cart={cart} setCart={setCart} calculateDiscountedPrice={calculateDiscountedPrice} cartTotal={cartTotal} />}
           {activeTab === 'lostfound' && <LostFoundView profile={profile} lostFound={lostFound} />}
           {activeTab === 'meetups' && <MeetupView profile={profile} />}
-          {activeTab === 'workspace' && <WorkspaceView profile={profile} setProfile={setProfile} />}
+          {activeTab === 'workspace' && <WorkspaceView profile={profile} />}
           {activeTab === 'investment' && <InvestmentView profile={profile} bids={bids} />}
           {activeTab === 'support' && <SupportView />}
         </AnimatePresence>
@@ -570,15 +570,24 @@ function MarketplaceView({ profile, items, cart, setCart, calculateDiscountedPri
 
   const handleAddItem = async () => {
     if (!profile) return;
-    await addDoc(collection(db, 'items'), {
-      ...newItem,
-      sellerId: profile.uid,
-      status: 'available',
-      carbonSaved: Math.floor(Math.random() * 50) + 10,
-      createdAt: new Date().toISOString()
-    });
-    setIsAdding(false);
-    setNewItem({ title: '', description: '', price: 0, category: 'Books', condition: 'Good', imageUrl: '' });
+    try {
+      const listingData = {
+        title: newItem.title,
+        category: newItem.category,
+        condition: newItem.condition,
+        price: newItem.price,
+        is_donation: newItem.category === 'Donations',
+        photo_url: newItem.imageUrl
+      };
+
+      await api.createListing(listingData);
+      
+      setIsAdding(false);
+      setNewItem({ title: '', description: '', price: 0, category: 'Books', condition: 'Good', imageUrl: '' });
+    } catch (err) {
+      console.error("Failed to add item:", err);
+      alert("Failed to list item.");
+    }
   };
 
   return (
@@ -847,10 +856,6 @@ function LostFoundView({ profile, lostFound }: { profile: UserProfile | null, lo
       };
 
       await api.reportLostFound(reportData);
-      
-      // Refresh
-      const updatedLF = await api.getLostFound();
-      setLostFound(updatedLF);
       
       setIsReporting(false);
       setNewReport({ title: '', description: '', type: 'lost', imageUrl: '', tags: [] });
