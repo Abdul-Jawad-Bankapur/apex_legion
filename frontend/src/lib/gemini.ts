@@ -4,7 +4,7 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
 export const analyzeImage = async (base64Image: string) => {
   const response = await ai.models.generateContent({
-    model: "gemini-3.1-pro-preview",
+    model: "gemini-1.5-flash",
     contents: [
       {
         parts: [
@@ -31,7 +31,7 @@ export const analyzeImage = async (base64Image: string) => {
 
 export const calculateMeritScore = async (academicData: string) => {
   const response = await ai.models.generateContent({
-    model: "gemini-3.1-pro-preview",
+    model: "gemini-1.5-flash",
     contents: [
       {
         parts: [
@@ -60,23 +60,13 @@ export const calculateMeritScore = async (academicData: string) => {
 
 export const chatWithGemini = async (messages: { role: string; text: string }[]) => {
   const chat = ai.chats.create({
-    model: "gemini-3-flash-preview",
+    model: "gemini-1.5-flash",
     config: {
       systemInstruction: "You are EcoCampus Support Bot. Help students with marketplace issues, lost and found, and campus-specific guidance. Be helpful, professional, and localized to a college campus environment."
     }
   });
   
-  // Replay history
-  for (let i = 0; i < messages.length - 1; i++) {
-    // This is not efficient but the SDK doesn't seem to have a direct history import in the same way as the old one
-    // Actually, the SDK supports history in chats.create? 
-    // Let's check the docs again.
-    // The example shows:
-    // const chat = ai.chats.create({ model: "...", config: { systemInstruction: "..." } });
-    // sendMessage is the way.
-  }
-  
-  // Wait, the sendMessage takes a message string.
-  const result = await chat.sendMessage({ message: messages[messages.length - 1].text });
+  const lastMessage = messages[messages.length - 1];
+  const result = await chat.sendMessage({ message: lastMessage.text });
   return result.text;
 };

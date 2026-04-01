@@ -7,7 +7,7 @@ const fs = require('fs');
 const db = require('./db');
 
 const app = express();
-const PORT = 3000;
+const PORT = 5000;
 const JWT_SECRET = 'hackathon-nexus-secret';
 
 // Ensure uploads directory exists
@@ -25,6 +25,10 @@ const upload = multer({ storage });
 app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static(uploadDir));
+
+app.get('/', (req, res) => {
+  res.json({ message: 'Campus Nexus API is running', version: '1.0.0' });
+});
 
 // --- Image Upload ---
 app.post('/api/upload', upload.single('image'), (req, res) => {

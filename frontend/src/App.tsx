@@ -47,6 +47,9 @@ import {
 import { auth, db, signIn, signOut } from './lib/firebase';
 import { UserProfile, Item, LostFound, Bid, Message } from './types';
 import { analyzeImage, calculateMeritScore, chatWithGemini } from './lib/gemini';
+import { api } from './lib/api';
+import { useAuth } from '../auth/context/AuthContext';
+import '../auth/pages/Auth.css';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -161,11 +164,100 @@ const Badge = ({ children, variant = 'indigo' }: { children: React.ReactNode, va
   );
 };
 
+// --- Auth View ---
+
+function AuthView() {
+  const [view, setView] = useState<'login' | 'register'>('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const { login, register } = useAuth();
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      if (view === 'login') {
+        await login(email, password);
+      } else {
+        await register(email, password, name);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Authentication failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="auth-container">
+      <div className="auth-card">
+        <div className="auth-header">
+          <div className="w-16 h-16 bg-indigo-600 rounded-2xl mx-auto flex items-center justify-center shadow-xl mb-4">
+            <Leaf className="text-white w-8 h-8" />
+          </div>
+          <h1 className="text-2xl font-black tracking-tight text-gray-900">CampusNexus</h1>
+          <p className="text-gray-500 font-medium">{view === 'login' ? 'Welcome back to campus!' : 'Join the student marketplace'}</p>
+        </div>
+
+        {error && <div className="auth-error">{error}</div>}
+
+        <form onSubmit={handleSubmit} className="auth-form">
+          {view === 'register' && (
+            <div className="form-group">
+              <label>Full Name</label>
+              <input type="text" value={name} onChange={e => setName(e.target.value)} required placeholder="John Doe" />
+            </div>
+          )}
+          <div className="form-group">
+            <label>College Email</label>
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)} required placeholder="email@college.edu" />
+          </div>
+          <div className="form-group">
+            <label>Password</label>
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)} required placeholder="••••••••" />
+          </div>
+
+          <button type="submit" className="auth-btn primary" disabled={loading}>
+            {loading ? 'Processing...' : view === 'login' ? 'Sign In' : 'Create Account'}
+          </button>
+        </form>
+
+        <p className="auth-footer">
+          {view === 'login' ? "Don't have an account?" : "Already have an account?"}
+          <button onClick={() => setView(view === 'login' ? 'register' : 'login')} className="ml-2 font-black text-indigo-600 hover:underline">
+            {view === 'login' ? 'Sign Up' : 'Sign In'}
+          </button>
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // --- Main App ---
 
 export default function App() {
-  const [user, setUser] = useState<FirebaseUser | null>(null);
-  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const { user, userData, loading, logout } = useAuth();
+  
+  // Map teammate's userData to our UserProfile
+  const profile: UserProfile | null = useMemo(() => {
+    if (!user) return null;
+    return {
+      uid: user.uid,
+      displayName: userData?.fullName || user.displayName || 'Student',
+      email: user.email || '',
+      photoURL: user.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid}`,
+      usn: userData?.usn || '',
+      meritScore: 50,
+      skills: [],
+      role: (userData?.role as any) || 'student',
+      isVerified: !!user.emailVerified
+    };
+  }, [user, userData]);
+
   const [activeTab, setActiveTab] = useState<'home' | 'marketplace' | 'lostfound' | 'workspace' | 'investment' | 'support' | 'meetups'>('home');
   const [items, setItems] = useState<Item[]>([]);
   const [lostFound, setLostFound] = useState<LostFound[]>([]);
@@ -173,49 +265,24 @@ export default function App() {
   const [cart, setCart] = useState<Item[]>([]);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
-  // Auth & Profile
-  useEffect(() => {
-    return onAuthStateChanged(auth, async (u) => {
-      setUser(u);
-      if (u) {
-        const docRef = doc(db, 'users', u.uid);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          setProfile(docSnap.data() as UserProfile);
-        } else {
-          const newProfile: UserProfile = {
-            uid: u.uid,
-            displayName: u.displayName || 'Student',
-            email: u.email || '',
-            photoURL: u.photoURL || '',
-            usn: '',
-            meritScore: 50,
-            skills: [],
-            role: 'student',
-            isVerified: false
-          };
-          await setDoc(docRef, newProfile);
-          setProfile(newProfile);
-        }
-      } else {
-        setProfile(null);
-      }
-    });
-  }, []);
-
-  // Data Listeners
+  // Data Fetching
   useEffect(() => {
     if (!user) return;
-    const unsubItems = onSnapshot(collection(db, 'items'), (snap) => {
-      setItems(snap.docs.map(d => ({ id: d.id, ...d.data() } as Item)));
-    });
-    const unsubLF = onSnapshot(collection(db, 'lostFound'), (snap) => {
-      setLostFound(snap.docs.map(d => ({ id: d.id, ...d.data() } as LostFound)));
-    });
-    const unsubBids = onSnapshot(collection(db, 'bids'), (snap) => {
-      setBids(snap.docs.map(d => ({ id: d.id, ...d.data() } as Bid)));
-    });
-    return () => { unsubItems(); unsubLF(); unsubBids(); };
+    
+    const fetchInitialData = async () => {
+      try {
+        const [fetchedItems, fetchedLF] = await Promise.all([
+          api.getListings(),
+          api.getLostFound()
+        ]);
+        setItems(fetchedItems);
+        setLostFound(fetchedLF);
+      } catch (err) {
+        console.error("Initial fetch failed:", err);
+      }
+    };
+
+    fetchInitialData();
   }, [user]);
 
   // Merit-Based Discount Logic
@@ -232,27 +299,14 @@ export default function App() {
     return cart.reduce((acc, item) => acc + calculateDiscountedPrice(item.price), 0);
   }, [cart, profile]);
 
+  if (loading) return (
+    <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center">
+      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-600"></div>
+    </div>
+  );
+
   if (!user) {
-    return (
-      <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center p-4">
-        <Card className="max-w-md w-full text-center space-y-8 p-12">
-          <div className="w-24 h-24 bg-indigo-600 rounded-3xl mx-auto flex items-center justify-center shadow-2xl shadow-indigo-200 rotate-12">
-            <Leaf className="text-white w-12 h-12 -rotate-12" />
-          </div>
-          <div className="space-y-2">
-            <h1 className="text-4xl font-black text-gray-900 tracking-tight">EcoCampus</h1>
-            <p className="text-gray-500 font-medium">Localized Circular Economy for Students</p>
-          </div>
-          <div className="space-y-4">
-            <Button onClick={signIn} className="w-full" size="lg">
-              <LogIn className="w-5 h-5" />
-              Sign in with College Email
-            </Button>
-            <p className="text-xs text-gray-400 uppercase tracking-widest font-bold">The Iron Barrier Verification Required</p>
-          </div>
-        </Card>
-      </div>
-    );
+    return <AuthView />;
   }
 
   return (
@@ -297,7 +351,7 @@ export default function App() {
               <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">Score: {profile?.meritScore}</span>
             </div>
             <img src={profile?.photoURL} className="w-10 h-10 rounded-xl border-2 border-indigo-100 shadow-sm" alt="Profile" />
-            <Button variant="ghost" size="sm" onClick={signOut} className="hidden sm:flex">
+            <Button variant="ghost" size="sm" onClick={logout} className="hidden sm:flex">
               <LogOut className="w-4 h-4" />
             </Button>
             <button className="md:hidden" onClick={() => setIsMenuOpen(!isMenuOpen)}>
@@ -486,17 +540,30 @@ function MarketplaceView({ profile, items, cart, setCart, calculateDiscountedPri
   const [isAdding, setIsAdding] = useState(false);
   const [newItem, setNewItem] = useState({ title: '', description: '', price: 0, category: 'Books', condition: 'Good', imageUrl: '' });
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [manualEntry, setManualEntry] = useState(false);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setIsAnalyzing(true);
+    
+    // Always show preview immediately
     const reader = new FileReader();
     reader.onloadend = async () => {
-      const base64 = (reader.result as string).split(',')[1];
-      const analysis = await analyzeImage(base64);
-      setNewItem(prev => ({ ...prev, ...analysis, imageUrl: reader.result as string }));
-      setIsAnalyzing(false);
+      setNewItem(prev => ({ ...prev, imageUrl: reader.result as string }));
+      
+      if (!manualEntry) {
+        setIsAnalyzing(true);
+        try {
+          const base64 = (reader.result as string).split(',')[1];
+          const analysis = await analyzeImage(base64);
+          setNewItem(prev => ({ ...prev, ...analysis, imageUrl: reader.result as string }));
+        } catch (err) {
+          console.error("AI Analysis failed, switching to manual", err);
+          setManualEntry(true);
+        } finally {
+          setIsAnalyzing(false);
+        }
+      }
     };
     reader.readAsDataURL(file);
   };
@@ -645,7 +712,18 @@ function MarketplaceView({ profile, items, cart, setCart, calculateDiscountedPri
             >
               <div className="flex items-center justify-between">
                 <h3 className="text-2xl font-black tracking-tight">List New Item</h3>
-                <button onClick={() => setIsAdding(false)}><X /></button>
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-full">
+                    <span className="text-[10px] font-black uppercase text-gray-500">Manual</span>
+                    <button 
+                      onClick={() => setManualEntry(!manualEntry)}
+                      className={cn("w-8 h-4 rounded-full transition-all relative", manualEntry ? "bg-indigo-600" : "bg-gray-300")}
+                    >
+                      <div className={cn("absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all shadow-sm", manualEntry ? "left-4.5" : "left-0.5")} />
+                    </button>
+                  </div>
+                  <button onClick={() => setIsAdding(false)}><X /></button>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -729,31 +807,57 @@ function LostFoundView({ profile, lostFound }: { profile: UserProfile | null, lo
   const [isReporting, setIsReporting] = useState(false);
   const [newReport, setNewReport] = useState({ title: '', description: '', type: 'lost' as 'lost' | 'found', imageUrl: '', tags: [] as string[] });
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [manualEntry, setManualEntry] = useState(false);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setIsAnalyzing(true);
+
+    // Show preview immediately
     const reader = new FileReader();
     reader.onloadend = async () => {
-      const base64 = (reader.result as string).split(',')[1];
-      const analysis = await analyzeImage(base64);
-      setNewReport(prev => ({ ...prev, ...analysis, imageUrl: reader.result as string }));
-      setIsAnalyzing(false);
+      setNewReport(prev => ({ ...prev, imageUrl: reader.result as string }));
+
+      if (!manualEntry) {
+        setIsAnalyzing(true);
+        try {
+          const base64 = (reader.result as string).split(',')[1];
+          const analysis = await analyzeImage(base64);
+          setNewReport(prev => ({ ...prev, ...analysis, imageUrl: reader.result as string }));
+        } catch (err) {
+          console.error("Lost & Found AI Analysis failed", err);
+          setManualEntry(true);
+        } finally {
+          setIsAnalyzing(false);
+        }
+      }
     };
     reader.readAsDataURL(file);
   };
 
   const handleAddReport = async () => {
     if (!profile) return;
-    await addDoc(collection(db, 'lostFound'), {
-      ...newReport,
-      reporterId: profile.uid,
-      status: 'active',
-      createdAt: new Date().toISOString()
-    });
-    setIsReporting(false);
-    setNewReport({ title: '', description: '', type: 'lost', imageUrl: '', tags: [] });
+    try {
+      const reportData = {
+        description: newReport.description,
+        tags: newReport.tags.join(','),
+        photo_url: newReport.imageUrl,
+        location_text: 'Campus', // Default for now
+        type: newReport.type
+      };
+
+      await api.reportLostFound(reportData);
+      
+      // Refresh
+      const updatedLF = await api.getLostFound();
+      setLostFound(updatedLF);
+      
+      setIsReporting(false);
+      setNewReport({ title: '', description: '', type: 'lost', imageUrl: '', tags: [] });
+    } catch (err) {
+      console.error("Failed to submit report:", err);
+      alert("Failed to submit report.");
+    }
   };
 
   return (
@@ -812,9 +916,19 @@ function LostFoundView({ profile, lostFound }: { profile: UserProfile | null, lo
             >
               <div className="flex items-center justify-between">
                 <h3 className="text-2xl font-black tracking-tight">Report Item</h3>
-                <button onClick={() => setIsReporting(false)}><X /></button>
+                <div className="flex items-center gap-4">
+                 <div className="flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-full">
+                   <span className="text-[10px] font-black uppercase text-gray-500">Manual</span>
+                   <button 
+                     onClick={() => setManualEntry(!manualEntry)}
+                     className={cn("w-8 h-4 rounded-full transition-all relative", manualEntry ? "bg-indigo-600" : "bg-gray-300")}
+                   >
+                     <div className={cn("absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all shadow-sm", manualEntry ? "left-4.5" : "left-0.5")} />
+                   </button>
+                 </div>
+                 <button onClick={() => setIsReporting(false)}><X /></button>
+               </div>
               </div>
-
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div className="space-y-4">
                   <div className="aspect-square bg-gray-50 rounded-3xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center relative overflow-hidden">
@@ -1443,6 +1557,14 @@ function SupportView() {
             />
             <Button onClick={handleSend} disabled={isLoading}>
               <ArrowRight className="w-5 h-5" />
+            </Button>
+          </div>
+        </div>
+      </Card>
+    </motion.div>
+  );
+}
+ className="w-5 h-5" />
             </Button>
           </div>
         </div>

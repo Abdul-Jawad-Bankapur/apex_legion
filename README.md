@@ -21,7 +21,7 @@ npm install
 # Start the server
 npm start
 ```
-The backend will run on `http://localhost:3000`. It will automatically create `campus_nexus.db` and an `uploads/` folder on first run.
+The backend will run on `http://localhost:5000`. It will automatically create `campus_nexus.db` and an `uploads/` folder on first run.
 
 ### 2. Frontend Setup
 From the `frontend` directory:
@@ -34,7 +34,7 @@ npm install
 # Start the development server
 npm run dev
 ```
-The frontend will run on `http://localhost:5173`.
+The frontend will run on `http://localhost:3000`.
 
 ---
 
