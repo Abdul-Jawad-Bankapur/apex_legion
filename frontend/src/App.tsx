@@ -26,88 +26,15 @@ import {
   Zap
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-  onAuthStateChanged, 
-  User as FirebaseUser 
-} from 'firebase/auth';
-import { 
-  collection, 
-  onSnapshot, 
-  doc, 
-  getDoc, 
-  setDoc, 
-  addDoc, 
-  query, 
-  where, 
-  orderBy, 
-  updateDoc, 
-  deleteDoc,
-  serverTimestamp
-} from 'firebase/firestore';
-import { auth, db, signIn, signOut } from './lib/firebase';
 import { UserProfile, Item, LostFound, Bid, Message } from './types';
 import { analyzeImage, calculateMeritScore, chatWithGemini } from './lib/gemini';
 import { api } from './lib/api';
-import { useAuth } from '../auth/context/AuthContext';
 import '../auth/pages/Auth.css';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
-}
-
-// --- Error Handling ---
-
-enum OperationType {
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  LIST = 'list',
-  GET = 'get',
-  WRITE = 'write',
-}
-
-interface FirestoreErrorInfo {
-  error: string;
-  operationType: OperationType;
-  path: string | null;
-  authInfo: {
-    userId: string | undefined;
-    email: string | null | undefined;
-    emailVerified: boolean | undefined;
-    isAnonymous: boolean | undefined;
-    tenantId: string | null | undefined;
-    providerInfo: {
-      providerId: string;
-      displayName: string | null;
-      email: string | null;
-      photoUrl: string | null;
-    }[];
-  }
-}
-
-function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-      isAnonymous: auth.currentUser?.isAnonymous,
-      tenantId: auth.currentUser?.tenantId,
-      providerInfo: auth.currentUser?.providerData.map(provider => ({
-        providerId: provider.providerId,
-        displayName: provider.displayName,
-        email: provider.email,
-        photoUrl: provider.photoURL
-      })) || []
-    },
-    operationType,
-    path
-  }
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
 }
 
 // --- Components ---
@@ -166,14 +93,13 @@ const Badge = ({ children, variant = 'indigo' }: { children: React.ReactNode, va
 
 // --- Auth View ---
 
-function AuthView() {
+function AuthView({ onLogin }: { onLogin: (user: any) => void }) {
   const [view, setView] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login, register } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -181,9 +107,13 @@ function AuthView() {
     setLoading(true);
     try {
       if (view === 'login') {
-        await login(email, password);
+        const data = await api.login({ email, password });
+        if (data.error) throw new Error(data.error);
+        onLogin(data.user);
       } else {
-        await register(email, password, name);
+        const data = await api.register({ name, email, password, dept: 'Engineering', year: 1 });
+        if (data.error) throw new Error(data.error);
+        onLogin(data.user);
       }
     } catch (err: any) {
       setError(err.message || 'Authentication failed');
@@ -240,23 +170,8 @@ function AuthView() {
 // --- Main App ---
 
 export default function App() {
-  const { user, userData, loading, logout } = useAuth();
-  
-  // Map teammate's userData to our UserProfile
-  const profile: UserProfile | null = useMemo(() => {
-    if (!user) return null;
-    return {
-      uid: user.uid,
-      displayName: userData?.fullName || user.displayName || 'Student',
-      email: user.email || '',
-      photoURL: user.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid}`,
-      usn: userData?.usn || '',
-      meritScore: 50,
-      skills: [],
-      role: (userData?.role as any) || 'student',
-      isVerified: !!user.emailVerified
-    };
-  }, [user, userData]);
+  const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
   const [activeTab, setActiveTab] = useState<'home' | 'marketplace' | 'lostfound' | 'workspace' | 'investment' | 'support' | 'meetups'>('home');
   const [items, setItems] = useState<Item[]>([]);
@@ -264,6 +179,42 @@ export default function App() {
   const [bids, setBids] = useState<Bid[]>([]);
   const [cart, setCart] = useState<Item[]>([]);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+  // Check for existing session
+  useEffect(() => {
+    const savedUser = localStorage.getItem('user');
+    const token = localStorage.getItem('token');
+    if (savedUser && token) {
+      setUser(JSON.parse(savedUser));
+    }
+    setLoading(false);
+  }, []);
+
+  const handleLogin = (u: any) => {
+    setUser(u);
+  };
+
+  const logout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    setUser(null);
+  };
+
+  // Map user to profile
+  const profile: UserProfile | null = useMemo(() => {
+    if (!user) return null;
+    return {
+      uid: user.id.toString(),
+      displayName: user.name,
+      email: user.email,
+      photoURL: `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`,
+      usn: user.usn || '',
+      meritScore: user.merit_score || 50,
+      skills: user.skills ? user.skills.split(',') : [],
+      role: (user.role as any) || 'student',
+      isVerified: !!user.verified
+    };
+  }, [user]);
 
   // Data Fetching
   useEffect(() => {
@@ -306,7 +257,7 @@ export default function App() {
   );
 
   if (!user) {
-    return <AuthView />;
+    return <AuthView onLogin={handleLogin} />;
   }
 
   return (
@@ -382,7 +333,7 @@ export default function App() {
                 {tab}
               </button>
             ))}
-            <Button variant="danger" className="w-full mt-4" onClick={signOut}>Logout</Button>
+            <Button variant="danger" className="w-full mt-4" onClick={logout}>Logout</Button>
           </motion.div>
         )}
       </AnimatePresence>
@@ -1001,7 +952,7 @@ function LostFoundView({ profile, lostFound }: { profile: UserProfile | null, lo
   );
 }
 
-function WorkspaceView({ profile, setProfile }: { profile: UserProfile | null, setProfile: any }) {
+function WorkspaceView({ profile }: { profile: UserProfile | null }) {
   const [isImporting, setIsImporting] = useState(false);
   const [csvData, setCsvData] = useState('');
   const [isCalculating, setIsCalculating] = useState(false);
@@ -1010,14 +961,8 @@ function WorkspaceView({ profile, setProfile }: { profile: UserProfile | null, s
     if (!profile) return;
     setIsCalculating(true);
     const result = await calculateMeritScore(csvData);
-    const updatedProfile = { 
-      ...profile, 
-      meritScore: result.score, 
-      skills: result.skills,
-      academicData: { raw: csvData, analysis: result.analysis }
-    };
-    await updateDoc(doc(db, 'users', profile.uid), updatedProfile);
-    setProfile(updatedProfile);
+    // In local mode, we'd update via API
+    alert("Merit score calculation simulated: " + result.score);
     setIsCalculating(false);
     setIsImporting(false);
   };
@@ -1054,22 +999,7 @@ function WorkspaceView({ profile, setProfile }: { profile: UserProfile | null, s
               <h3 className="text-2xl font-black text-indigo-900">{profile?.displayName}</h3>
               <div className="flex flex-col items-center gap-1">
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">USN</label>
-                <input 
-                  className="bg-transparent border-b border-gray-100 focus:border-indigo-600 text-center text-xs font-bold text-gray-600 outline-none w-full"
-                  value={profile?.usn}
-                  onChange={async (e) => {
-                    const newUsn = e.target.value;
-                    setProfile((prev: any) => prev ? ({ ...prev, usn: newUsn }) : null);
-                    if (profile) {
-                      try {
-                        await updateDoc(doc(db, 'users', profile.uid), { usn: newUsn });
-                      } catch (err) {
-                        handleFirestoreError(err, OperationType.UPDATE, `users/${profile.uid}`);
-                      }
-                    }
-                  }}
-                  placeholder="Enter USN"
-                />
+                <div className="text-xs font-bold text-gray-600 uppercase">{profile?.usn || 'Not Set'}</div>
               </div>
             </div>
           </div>
@@ -1106,7 +1036,7 @@ function WorkspaceView({ profile, setProfile }: { profile: UserProfile | null, s
           <div className="space-y-4">
             <h3 className="text-xl font-black text-indigo-900">Academic Analysis</h3>
             <div className="p-6 bg-gray-50 rounded-2xl border border-gray-100 min-h-[200px] text-sm text-gray-600 leading-relaxed">
-              {profile?.academicData?.analysis || "Import your academic data (CSV/Excel) to see a detailed AI analysis of your performance and merit score breakdown."}
+              Import your academic data (CSV/Excel) to see a detailed AI analysis of your performance and merit score breakdown.
             </div>
           </div>
 
@@ -1188,14 +1118,7 @@ function InvestmentView({ profile, bids }: { profile: UserProfile | null, bids: 
 
   const handlePlaceBid = async () => {
     if (!profile) return;
-    await addDoc(collection(db, 'bids'), {
-      studentId: profile.uid,
-      bidderId: 'system-investor', // Mock for now
-      amount: bidAmount,
-      equityPercentage: equity,
-      status: 'pending',
-      createdAt: new Date().toISOString()
-    });
+    // System simulated bid
     setIsBidding(false);
   };
 
@@ -1352,27 +1275,10 @@ function MeetupView({ profile }: { profile: UserProfile | null }) {
   const [isScheduling, setIsScheduling] = useState(false);
   const [newMeetup, setNewMeetup] = useState({ location: 'Main Library Hub', time: '', purpose: 'Marketplace Handover' });
 
-  useEffect(() => {
-    if (!profile) return;
-    const q = query(collection(db, 'meetups'), where('participants', 'array-contains', profile.uid));
-    return onSnapshot(q, (snap) => {
-      setMeetups(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
-  }, [profile]);
-
   const handleSchedule = async () => {
     if (!profile) return;
-    try {
-      await addDoc(collection(db, 'meetups'), {
-        ...newMeetup,
-        participants: [profile.uid],
-        status: 'pending',
-        createdAt: new Date().toISOString()
-      });
-      setIsScheduling(false);
-    } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, 'meetups');
-    }
+    // Local simulation
+    setIsScheduling(false);
   };
 
   const hotspots = [

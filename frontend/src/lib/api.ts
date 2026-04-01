@@ -10,14 +10,31 @@ const getHeaders = () => {
 
 export const api = {
   // Auth
-  login: async (userData: { email: string; name: string; dept: string; year: number }) => {
+  login: async (userData: { email: string; password?: string }) => {
     const res = await fetch(`${API_BASE_URL}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(userData)
     });
     const data = await res.json();
-    if (data.token) localStorage.setItem('token', data.token);
+    if (data.token) {
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
+    }
+    return data;
+  },
+
+  register: async (userData: { name: string; email: string; password?: string; dept?: string; year?: number }) => {
+    const res = await fetch(`${API_BASE_URL}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(userData)
+    });
+    const data = await res.json();
+    if (data.token) {
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
+    }
     return data;
   },
 

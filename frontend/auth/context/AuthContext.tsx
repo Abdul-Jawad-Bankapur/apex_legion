@@ -54,7 +54,13 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [isProfileComplete, setIsProfileComplete] = useState(false);
 
   useEffect(() => {
+    // Safety timeout to prevent infinite loading
+    const timer = setTimeout(() => {
+      setLoading(false);
+    }, 3000);
+
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      clearTimeout(timer);
       setUser(firebaseUser);
       
       if (firebaseUser) {

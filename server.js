@@ -51,28 +51,35 @@ const authenticateToken = (req, res, next) => {
 };
 
 // --- Auth ---
-app.post('/api/auth/login', (req, res) => {
-  const { email, name, dept, year } = req.body;
-  if (!email) return res.status(400).json({ error: 'Email is required' });
+app.post('/api/auth/register', (req, res) => {
+  const { name, email, password, dept, year } = req.body;
+  if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
 
-  db.get('SELECT * FROM users WHERE email = ?', [email], (err, user) => {
-    if (err) return res.status(500).json({ error: 'Database error' });
-
-    if (user) {
-      const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET);
-      return res.json({ token, user });
-    }
-
-    db.run(
-      'INSERT INTO users (name, email, dept, year) VALUES (?, ?, ?, ?)',
-      [name, email, dept, year],
-      function (err) {
-        if (err) return res.status(500).json({ error: 'Failed to create user' });
-        const newUser = { id: this.lastID, name, email, dept, year, verified: 0, role: 'student' };
-        const token = jwt.sign({ id: newUser.id, email: newUser.email }, JWT_SECRET);
-        res.status(201).json({ token, user: newUser });
+  db.run(
+    'INSERT INTO users (name, email, password, dept, year) VALUES (?, ?, ?, ?, ?)',
+    [name, email, password, dept, year],
+    function (err) {
+      if (err) {
+        if (err.message.includes('UNIQUE')) return res.status(400).json({ error: 'Email already exists' });
+        return res.status(500).json({ error: 'Registration failed' });
       }
-    );
+      const newUser = { id: this.lastID, name, email, dept, year, verified: 0, role: 'student' };
+      const token = jwt.sign({ id: newUser.id, email: newUser.email }, JWT_SECRET);
+      res.status(201).json({ token, user: newUser });
+    }
+  );
+});
+
+app.post('/api/auth/login', (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
+
+  db.get('SELECT * FROM users WHERE email = ? AND password = ?', [email, password], (err, user) => {
+    if (err) return res.status(500).json({ error: 'Database error' });
+    if (!user) return res.status(401).json({ error: 'Invalid email or password' });
+
+    const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET);
+    res.json({ token, user });
   });
 });
 

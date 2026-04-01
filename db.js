@@ -7,6 +7,7 @@ db.serialize(() => {
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT,
     email TEXT UNIQUE,
+    password TEXT,
     dept TEXT,
     year INTEGER,
     verified BOOLEAN DEFAULT 0,
@@ -86,6 +87,11 @@ db.serialize(() => {
     FOREIGN KEY(student_id) REFERENCES users(id),
     FOREIGN KEY(bidder_id) REFERENCES users(id)
   )`);
+});
+
+// Hackathon Migration: Ensure password column exists
+db.run("ALTER TABLE users ADD COLUMN password TEXT", (err) => {
+  // Ignore error if column already exists
 });
 
 module.exports = db;
